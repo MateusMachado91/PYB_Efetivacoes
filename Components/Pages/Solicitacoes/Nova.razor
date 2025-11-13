@@ -1,0 +1,1503 @@
+@page "/solicitacoes/nova"
+@using PYBWeb.Domain.Entities
+@using PYBWeb.Domain.Interfaces
+@using PYBWeb.Web.Models
+@using PYBWeb.Infrastructure.Services
+@inject ISolicitacoesCics2025Service SolicitacoesCics2025Service
+@inject IAmbienteCicsService AmbienteCicsService
+@inject IAmbienteTodosService AmbienteTodosService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Authorization
+
+@attribute [Authorize(Policy = "RequireGroup")]
+
+<PageTitle>Nova Solicitação CICS - PYB</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="display-6 text-primary">
+                <i class="bi bi-plus-circle"></i> Nova Solicitação CICS
+            </h1>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="/" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Voltar
+            </a>
+        </div>
+    </div>
+
+    @if (DateTime.Now.DayOfWeek == DayOfWeek.Friday)
+    {
+        <div class="alert alert-warning d-flex align-items-center" role="alert">
+            <svg xmlns="http://www.w3.org/2000/svg" class="bi flex-shrink-0 me-2" width="24" height="24" fill="currentColor" viewBox="0 0 16 16" role="img" aria-label="Alerta:">
+                <path d="M8.982 1.566a1.13 1.13 0 0 0-1.964 0L.165 13.233c-.457.778.091 1.767.982 1.767h13.706c.89 0 1.438-.99.982-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1-2.002 0 1 1 0 0 1 2.002 0z" />
+            </svg>
+            <div>
+                <strong>Atenção:</strong> As solicitações feitas na sexta-feira serão cadastradas apenas no final da próxima semana.
+            </div>
+        </div>
+    }
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Dados da Solicitação</h5>
+                </div>
+                <div class="card-body">
+                    <EditForm Model="@model" OnValidSubmit="@SubmitForm" OnInvalidSubmit="@OnInvalidSubmit">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger mb-3" />
+
+                        @if (!string.IsNullOrEmpty(mensagemErro))
+                        {
+                            <div class="alert alert-danger">
+                                <i class="bi bi-exclamation-triangle"></i> @mensagemErro
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(mensagemSucesso))
+                        {
+                            <div class="alert alert-success">
+                                <i class="bi bi-check-circle"></i> @mensagemSucesso
+                            </div>
+                        }
+
+                        <!-- Campos Comuns -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h6 class="text-muted border-bottom pb-2 mb-3">
+                                    <i class="bi bi-gear"></i> Informações Gerais
+                                </h6>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <label for="css" class="form-label">Sigla do Sistema <span class="text-danger">*</span></label>
+                                <InputText id="css"
+                                           class="form-control"
+                                           @bind-Value="model.Css"
+                                           @bind-Value:after="UpCssChanged"
+                                           placeholder="CSS"
+                                           maxlength="3"
+                                           style="text-transform:uppercase;" />
+                            </div>
+                            <div class="col-md-3">
+                                <label for="ambiente" class="form-label">Ambiente CICS <span class="text-danger">*</span></label>
+                                <select id="ambiente" class="form-select" @bind="model.AmbienteId" @bind:after="OnAmbienteChanged">
+                                    <option value="0">Selecione o ambiente...</option>
+                                    @if (IsAmbienteTodosDisponivel())
+                                    {
+                                        <option value="-1">TODOS - Todos os ambientes PXU/PXS</option>
+                                    }
+                                    @foreach (var ambiente in ambientes)
+                                    {
+                                        <option value="@ambiente.Id">@ambiente.IdChave - @ambiente.Descricao</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="usuario" class="form-label">Matrícula Solicitante <span class="text-danger">*</span></label>
+                                <InputText id="usuario" class="form-control" @bind-Value="model.Usuario" placeholder="Matrícula" />
+                            </div>
+
+                            
+                            <div class="col-md-3">
+                                <label for="operacao" class="form-label">Operação <span class="text-danger">*</span></label>
+                                <select id="operacao" class="form-select" @bind="model.Operacao">
+                                    <option value="">Selecione...</option>
+                                    <option value="INCLUIR">Incluir</option>
+                                    <option value="EXCLUIR">Excluir</option>
+                                    <option value="ALTERAR">Alterar</option>
+                                </select>
+                            </div>
+                    
+
+                        </div>
+
+                        <!-- Tipo da Tabela -->
+                        <div class="row mb-4 align-items-center">
+                            <div class="col-md-4">
+                                <label for="tipoTabela" class="form-label">
+                                    Selecione o Tipo de Tabela <span class="text-danger">*</span>
+                                </label>
+                                <select id="tipoTabela" class="form-select" @bind="model.TipoTabela" @bind:after="OnTipoTabelaChanged">
+                                    <option value="">Selecione o tipo de tabela...</option>
+                                    <option value="FCT">FCT - File Control Table</option>
+                                    <option value="DCT">DCT - Destination Control Table</option>
+                                    <option value="PCT">PCT - Program Control Table</option>
+                                    <option value="PPT">PPT - Processing Program Table</option>
+                                </select>
+                                @if (model.TipoTabela == "PCT")
+                                {
+                                    <small class="text-warning mt-1 d-block">
+                                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                        <strong>Lembre-se:</strong> Fazer avaliação de transação primeiro
+                                    </small>
+                                }
+                            </div>
+                            @if (model.TipoTabela == "DCT")
+                            {
+                                <div class="col-md-4">
+                                    <label for="queueType" class="form-label">Tipo de Fila</label>
+                                    <select id="queueType" class="form-select" @bind="model.QueueType">
+                                        <option value="">Selecione...</option>
+                                        <option value="EXTRA">EXTRA</option>
+                                        <option value="INTRA">INTRA</option>
+                                        <option value="INDIRECT">INDIRECT</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Nome da Fila</label>
+                                    <input type="text" class="form-control" maxlength="4" @bind="model.FileName" @bind:after="UpFileNameChanged" style="text-transform:uppercase;" />
+                                    <ValidationMessage For="@(() => model.FileName)" />
+                                    @{
+                                        var mostrarErroFileName = !string.IsNullOrWhiteSpace(model.FileName)
+                                            && !RegrasTabelas.ValidarNomeFila(model.FileName, model.Css);
+                                    }
+                                    @if (mostrarErroFileName)
+                                    {
+                                        <small class="text-danger">
+                                            Nome da fila: 4 caracteres, não pode começar com 'C'. Se PCG, deve começar com 'P'.
+                                        </small>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Campos de cada Tipo de Tabela -->
+                        @if (model.TipoTabela == "FCT")
+                        {
+                            <div class="row mb-4">
+                                <div class="col-12">
+                                    <h6 class="text-muted border-bottom pb-2 mb-3">
+                                        <i class="bi bi-file-earmark"></i> Configurações FCT - File Control Table
+                                    </h6>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="type" class="form-label">Tipo</label>
+                                    <select id="type" class="form-select" @bind="model.Type">
+                                        <option value="">Selecione...</option>
+                                        <option value="LOCAL">LOCAL</option>
+                                        <option value="REMOTO">REMOTO</option>
+                                        <option value="PADRÃO BNO">PADRÃO BNO</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="nameArq" class="form-label">Nome do Arquivo</label>
+                                    <InputText id="nameArq" class="form-control" @bind-Value="model.NameArq" @bind-Value:after="UpNameArqChanged" style="text-transform:uppercase;" />
+                                    @{
+                                        var mostrarErroNomeArquivo = !string.IsNullOrWhiteSpace(model.NameArq)
+                                            && !string.IsNullOrWhiteSpace(model.Css)
+                                            && !model.NameArq.ToUpper().StartsWith(model.Css.ToUpper());
+                                    }
+                                    @if (mostrarErroNomeArquivo)
+                                    {
+                                        <span class="text-danger small">
+                                            O nome do arquivo deve começar com o valor da CSS.<br/>
+                                            Exemplo: Se CSS = "@(model.Css)", então Nome do Arquivo deve começar com "@(model.Css)".
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+
+                            @if (model.Type == "LOCAL")
+                            {
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label for="dsnameArq" class="form-label">DSNAME do Arquivo</label>
+                                        <InputText id="dsnameArq" class="form-control" @bind-Value="model.DsnameArq" @bind-Value:after="UpDsnameArqChanged" style="text-transform:uppercase;" />
+                                        @{
+                                            var mostrarErroDsname = !string.IsNullOrWhiteSpace(model.DsnameArq)
+                                                && !string.IsNullOrWhiteSpace(model.Css)
+                                                && (
+                                                    !model.DsnameArq.ToUpper().StartsWith("BPD" + model.Css.ToUpper())
+                                                    || !model.DsnameArq.ToUpper().Contains(".D")
+                                                    || !model.DsnameArq.ToUpper().Contains(".G00000")
+                                                    || model.DsnameArq.Contains("_")
+                                                );
+                                        }
+                                        @if (mostrarErroDsname)
+                                        {
+                                            <span class="text-danger small">
+                                                O DSNAME deve começar com "BPD@(model.Css)", conter ".D" e ".G00000", e não pode conter "_".<br />
+                                                Exemplo: BPD@(model.Css).D____.G00000
+                                            </span>
+                                        }
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="estInit" class="form-label">Estado Inicial</label>
+                                        <select id="estInit" class="form-select" @bind="model.EstInit">
+                                            <option value="">Selecione...</option>
+                                            <option value="ENABLE">ENABLE</option>
+                                            <option value="DISABLE">DISABLE</option>
+                                            <option value="UNENABLED">UNENABLED</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+
+                                    <div class="col-md-4">
+                                        <label class="form-label">Serviços <span class="text-danger">*</span></label>
+                                        
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="servico_ADD" @bind="IsAddSelected" />
+                                            <label class="form-check-label" for="servico_ADD">ADD</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="servico_BROWSE" @bind="IsBrowseSelected" />
+                                            <label class="form-check-label" for="servico_BROWSE">BROWSE</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="servico_DELETE" @bind="IsDeleteSelected" />
+                                            <label class="form-check-label" for="servico_DELETE">DELETE</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="servico_READ" @bind="IsReadSelected" />
+                                            <label class="form-check-label" for="servico_READ">READ</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="servico_UPDATE" @bind="IsUpdateSelected" />
+                                            <label class="form-check-label" for="servico_UPDATE">UPDATE</label>
+                                        </div>
+                                        @{
+                                            var isRead = model.Services?.Contains("READ") == true;
+                                            var isUpdate = model.Services?.Contains("UPDATE") == true;
+                                            var isDelete = model.Services?.Contains("DELETE") == true;
+                                            var isBrowse = model.Services?.Contains("BROWSE") == true;
+                                            var isAdd = model.Services?.Contains("ADD") == true;
+                                            var servicesValidation = RegrasTabelas.ValidarServicesFctLocal(isRead, isUpdate, isDelete, isBrowse, isAdd);
+                                        }
+                                        @if (!servicesValidation.isValid)
+                                        {
+                                            <span style="color: #6c757d; font-size: 0.9em;">
+                                                @servicesValidation.errorMessage
+                                            </span>
+                                        }
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label for="numStrng" class="form-label">Número de Strings</label>
+                                        <InputText id="numStrng" class="form-control" @bind-Value="model.NumStrng" />
+
+                                        @{
+                                            var isBrowseForNumStrng = model.Services?.Contains("BROWSE") == true;
+                                            var numStrngValidation = RegrasTabelas.ValidarNumStrngFctLocal(model.NumStrng ?? string.Empty, isBrowseForNumStrng);
+                                        }
+                                        
+                                        @if (!numStrngValidation.isValid)
+                                        {
+                                            <span style="color: #6c757d; font-size: 0.9em;">
+                                                @numStrngValidation.errorMessage
+                                            </span>
+                                        }
+                                </div>
+
+
+
+                                </div>
+
+                            }
+                            else if (model.Type == "REMOTO")
+                            {
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="ambienteRemoto" class="form-label">Ambiente Remoto <span class="text-danger">*</span></label>
+                                        <select id="ambienteRemoto" class="form-select" @bind="model.AmbienteRemotoId" @bind:after="OnAmbienteRemotoChanged">
+                                            <option value="">Selecione o ambiente...</option>
+                                            @if (ambientesRemotos != null)
+                                            {
+                                                @foreach (var ambiente in ambientesRemotos)
+                                                {
+                                                    <option value="@ambiente.Id">@ambiente.Nome</option>
+                                                }
+                                            }
+                                        </select>
+                                        @if (!string.IsNullOrWhiteSpace(model.AmbienteRemotoNome))
+                                        {
+                                            <small class="text-muted">
+                                                Selecionado: @model.AmbienteRemotoNome
+                                            </small>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else if (model.Type == "PADRÃO BNO")
+                            {
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label for="codigoAgencia" class="form-label">Código da Agência <span class="text-danger">*</span></label>
+                                        <InputText id="codigoAgencia" class="form-control" @bind-Value="model.CodigoAgencia" @bind-Value:after="OnCodigoAgenciaChanged" placeholder="0000" maxlength="4" />
+                                        @{
+                                            var codigoAgenciaValido = !string.IsNullOrWhiteSpace(model.CodigoAgencia) 
+                                                && model.CodigoAgencia.Length == 4 
+                                                && int.TryParse(model.CodigoAgencia, out var codigo) 
+                                                && codigo > 0;
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(model.CodigoAgencia) && !codigoAgenciaValido)
+                                        {
+                                            <small class="text-danger">
+                                                Código deve ter 4 dígitos numéricos e ser maior que zero.
+                                            </small>
+                                        }
+                                        else if (string.IsNullOrWhiteSpace(model.CodigoAgencia))
+                                        {
+                                            <small class="text-muted">Exemplo: 0045</small>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-12">
+                                        <label class="form-label">Arquivos Padrão BNO <span class="text-danger">*</span></label>
+                                        <small class="text-muted d-block mb-2">Selecione pelo menos um arquivo padrão</small>
+                                        
+                                        <div class="row">
+                                            <div class="col-md-2">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="arquivo_I" @bind="IsArquivoISelected" />
+                                                    <label class="form-check-label" for="arquivo_I">
+                                                        <strong>I</strong> - Índice<br/>
+                                                        <small class="text-muted">Browse, Read, Update</small>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="arquivo_O" @bind="IsArquivoOSelected" />
+                                                    <label class="form-check-label" for="arquivo_O">
+                                                        <strong>O</strong> - Outros<br/>
+                                                        <small class="text-muted">Todos os serviços</small>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="arquivo_S" @bind="IsArquivoSSelected" />
+                                                    <label class="form-check-label" for="arquivo_S">
+                                                        <strong>S</strong> - Sustados<br/>
+                                                        <small class="text-muted">Add, Browse, Read, Update</small>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="arquivo_P" @bind="IsArquivoPSelected" />
+                                                    <label class="form-check-label" for="arquivo_P">
+                                                        <strong>P</strong> - Pacote<br/>
+                                                        <small class="text-muted">Add, Browse, Read, Update</small>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="arquivo_X" @bind="IsArquivoXSelected" />
+                                                    <label class="form-check-label" for="arquivo_X">
+                                                        <strong>X</strong> - Índice Alt. Pacote<br/>
+                                                        <small class="text-muted">Browse, Read</small>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        @if (model.ArquivosPadraoBno.Count == 0)
+                                        {
+                                            <small class="text-danger">Selecione pelo menos um arquivo padrão BNO.</small>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Nome do Arquivo (Gerado)</label>
+                                        <input class="form-control" readonly value="@GerarNomeArquivoBno()" />
+                                        <small class="text-muted">Gerado automaticamente baseado na seleção</small>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">DSNAME (Gerado)</label>
+                                        <input class="form-control" readonly value="@GerarDsnameBno()" />
+                                        <small class="text-muted">Exemplo: BPDBNOA.DI I001.G00000.AGE@(model.CodigoAgencia ?? "0000")</small>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Número de Strings</label>
+                                        <input class="form-control" readonly value="03" />
+                                        <small class="text-muted">Fixo para Padrão BNO</small>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Estado Inicial</label>
+                                        <input class="form-control" readonly value="ENABLE" />
+                                        <small class="text-muted">Padrão para BNO</small>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <label class="form-label">Serviços (Automático)</label>
+                                        <div class="form-control" style="min-height: 38px; background-color: #f8f9fa;">
+                                            @if (model.ArquivosPadraoBno.Count > 0)
+                                            {
+                                                <span>@string.Join(", ", ObterServicosAutomaticosBno())</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">Selecione arquivos para ver os serviços</span>
+                                            }
+                                        </div>
+                                        <small class="text-muted">Serviços definidos automaticamente pelo tipo de arquivo</small>
+                                    </div>
+                                </div>
+                            }
+
+                        
+                        }
+                        @if (model.TipoTabela == "PCT")
+                        {
+                            <div class="row mb-4">
+                                <div class="col-12">
+                                    <h6 class="text-muted border-bottom pb-2 mb-3">
+                                        <i class="bi bi-cpu"></i> Configurações PCT - Program Control Table
+                                    </h6>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="nameTrans" class="form-label">Nome da Transação</label>
+                                    <InputText id="nameTrans" class="form-control" @bind-Value="model.NameTrans" @bind-Value:after="UpNameTransChanged" style="text-transform:uppercase;" />
+                                    @{
+                                        var mostrarErroTransacao = !string.IsNullOrWhiteSpace(model.NameTrans)
+                                            && !string.IsNullOrWhiteSpace(model.Css)
+                                            && model.Css.Length >= 2
+                                            && !(model.NameTrans.StartsWith(model.Css.Substring(model.Css.Length - 2), StringComparison.OrdinalIgnoreCase)
+                                                || model.NameTrans.EndsWith(model.Css.Substring(model.Css.Length - 2), StringComparison.OrdinalIgnoreCase));
+                                    }
+                                    @if (mostrarErroTransacao)
+                                    {
+                                        <span class="text-danger small">
+                                            O nome da transação deve começar ou terminar com os dois últimos caracteres do CSS.<br />
+                                            Exemplo: Se CSS = "@(model.Css)", então deve começar ou terminar com "@(model.Css?.Length >= 2 ? model.Css.Substring(model.Css.Length - 2) : "")"
+                                        </span>
+                                    }
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="activeSoft" class="form-label">Programa para Ativar</label>
+                                    <InputText id="activeSoft" class="form-control" @bind-Value="model.ActiveSoft" @bind-Value:after="UpActiveSoftChanged" style="text-transform:uppercase;" />
+                                    @{
+                                        var mostrarErroActiveSoft = !string.IsNullOrWhiteSpace(model.ActiveSoft)
+                                            && !string.IsNullOrWhiteSpace(model.Css)
+                                            && !(model.ActiveSoft.ToUpper().StartsWith(model.Css.ToUpper() + "P") 
+                                                || model.ActiveSoft.ToUpper().StartsWith("PWXP"));
+                                    }
+                                    @if (mostrarErroActiveSoft)
+                                    {
+                                        <span class="text-danger small">
+                                            O programa para ativar deve começar com "@(model.Css)P" ou com "PWXP".
+                                        </span>
+                                    }
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="twaSize" class="form-label">TWA Size</label>
+                                    <InputText id="twaSize" class="form-control" @bind-Value="model.TwaSize" />
+                                    @{
+                                        var mostrarErroTwa = !string.IsNullOrWhiteSpace(model.TwaSize)
+                                            && (!int.TryParse(model.TwaSize, out var valor) || valor >= 32768);
+                                    }
+                                    @if (mostrarErroTwa)
+                                    {
+                                        <span class="text-danger small">
+                                            TWA Size deve ser menor que 32768.
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="estInitPct" class="form-label">Estado Inicial</label>
+                                    <select id="estInitPct" class="form-select" @bind="model.EstInit">
+                                        <option value="">Selecione...</option>
+                                        <option value="ENABLE">ENABLE</option>
+                                        <option value="DISABLE">DISABLE</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="dataAllocation" class="form-label">Alocação de Dados</label>
+                                    <select id="dataAllocation" class="form-select" @bind="model.DataAllocation">
+                                        <option value="ANY">ANY</option>
+                                        <option value="BELOW">BELOW</option>
+                                    </select>
+                                    @if (model.DataAllocation == "BELOW")
+                                    {
+                                        <div class="mt-2">
+                                            <label for="justificativaBelow" class="form-label">Justificativa <span class="text-danger">*</span></label>
+                                            <InputTextArea id="justificativaBelow" class="form-control" @bind-Value="model.JustificativaBelow" rows="2" />
+
+                                            @{
+                                                var justificativaInicial = ""; // Valor padrão opcional
+                                                var mostrarErroJustificativa = string.IsNullOrWhiteSpace(model.JustificativaBelow)
+                                                    || model.JustificativaBelow == justificativaInicial;
+                                            }
+                                            @if (mostrarErroJustificativa)
+                                            {
+                                                <span class="text-danger small">A justificativa para Below é obrigatória.</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="prev" class="form-label">Previsão execuções por dia <span class="text-danger">*</span></label>
+                                    <InputText id="prev" class="form-control" @bind-Value="model.Prev" placeholder="Número de execuções por dia" />
+
+                                    @{
+                                        var mostrarErroPrev = string.IsNullOrWhiteSpace(model.Prev) || !int.TryParse(model.Prev, out var n) || n <= 0;
+                                    }
+                                    @if (mostrarErroPrev)
+                                    {
+                                        <span class="text-danger small">
+                                            Informe o número estimado de execuções por dia (deve ser um número inteiro maior que zero).
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        @if (model.TipoTabela == "PPT")
+                        {
+                            <div class="row mb-4">
+                                <div class="col-12">
+                                    <h6 class="text-muted border-bottom pb-2 mb-3">
+                                        <i class="bi bi-code-square"></i> Configurações PPT - Processing Program Table
+                                    </h6>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="nameSoft" class="form-label">Nome do Programa <span class="text-danger">*</span></label>
+                                    <InputText id="nameSoft" class="form-control" @bind-Value="model.NameSoft" @bind-Value:after="UpNameSoftChanged" style="text-transform:uppercase;" />
+                                    
+                                    @{
+                                        var nomeProgramaValidation = RegrasTabelas.ValidarNomeProgramaPpt(model.NameSoft ?? string.Empty, model.Css ?? string.Empty);
+                                    }
+                                    @if (!nomeProgramaValidation.isValid)
+                                    {
+                                        <span style="color: #6c757d; font-size: 0.9em;">
+                                            @nomeProgramaValidation.errorMessage
+                                        </span>
+                                    }
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="linkName" class="form-label">Nome da Link <span class="text-danger">*</span></label>
+                                    <InputText id="linkName" class="form-control" @bind-Value="model.LinkName" @bind-Value:after="UpLinkNameChanged" style="text-transform:uppercase;" />
+                                    
+                                    @{
+                                        var nomeLinkValidation = RegrasTabelas.ValidarNomeLinkPpt(model.LinkName ?? string.Empty, model.Css ?? string.Empty);
+                                    }
+                                    @if (!nomeLinkValidation.isValid)
+                                    {
+                                        <span style="color: #6c757d; font-size: 0.9em;">
+                                            @nomeLinkValidation.errorMessage
+                                        </span>
+                                    }
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="language" class="form-label">Linguagem</label>
+                                    <select id="language" class="form-select" @bind="model.Language">
+                                        <option value="">Selecione...</option>
+                                        <option value="COBOL">COBOL</option>
+                                        <option value="ASSEMBLER">ASSEMBLER</option>
+                                        <option value="C">C</option>
+                                        <option value="PLI">PLI</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="typePpt" class="form-label">Tipo</label>
+                                    <select id="typePpt" class="form-select" @bind="model.TypePpt" @bind:after="OnTypePptChanged">
+                                        <option value="">Selecione...</option>
+                                        <option value="PROGRAMA">PROGRAMA</option>
+                                        <option value="MAPA">MAPA</option>
+                                        <option value="TABELA">TABELA</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="estInitPpt" class="form-label">Estado Inicial</label>
+                                    <select id="estInitPpt" class="form-select" @bind="model.EstInit">
+                                        <option value="">Selecione...</option>
+                                        <option value="ENABLE">ENABLE</option>
+                                        <option value="DISABLE">DISABLE</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            @* Campos específicos para PROGRAMA *@
+                            @if (model.TypePpt == "PROGRAMA")
+                            {
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label for="autoAlt" class="form-label">Auto-Alterável</label>
+                                        <select id="autoAlt" class="form-select" @bind="model.AutoAlt">
+                                            <option value="">Selecione...</option>
+                                            <option value="SIM">SIM</option>
+                                            <option value="NÃO">NÃO</option>
+                                        </select>
+                                        
+                                        @{
+                                            var isAutoAlteravel = model.AutoAlt == "SIM";
+                                            var autoAlteraveValidation = RegrasTabelas.ValidarAutoAlteravelPpt(isAutoAlteravel, model.JustificativaAutoAlt ?? string.Empty);
+                                        }
+                                        @if (!autoAlteraveValidation.isValid)
+                                        {
+                                            <span style="color: #6c757d; font-size: 0.9em;">
+                                                @autoAlteraveValidation.errorMessage
+                                            </span>
+                                        }
+                                    </div>
+                                    
+                                    @if (model.AutoAlt == "SIM")
+                                    {
+                                        <div class="col-md-8">
+                                            <label for="justificativaAutoAlt" class="form-label">Justificativa Auto-Alterável <span class="text-danger">*</span></label>
+                                            <InputTextArea id="justificativaAutoAlt" class="form-control" @bind-Value="model.JustificativaAutoAlt" rows="2" />
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label for="dataAllocationPpt" class="form-label">Alocação dos Dados</label>
+                                        <select id="dataAllocationPpt" class="form-select" @bind="model.DataAllocation">
+                                            <option value="ANY">ANY</option>
+                                            <option value="BELOW">BELOW</option>
+                                        </select>
+                                        
+                                        @{
+                                            var alocacaoValidation = RegrasTabelas.ValidarAlocacaoDadosPpt(model.DataAllocation ?? string.Empty, model.JustificativaBelowPpt ?? string.Empty);
+                                        }
+                                        @if (!alocacaoValidation.isValid)
+                                        {
+                                            <span style="color: #6c757d; font-size: 0.9em;">
+                                                @alocacaoValidation.errorMessage
+                                            </span>
+                                        }
+                                    </div>
+                                    
+                                    @if (model.DataAllocation == "BELOW")
+                                    {
+                                        <div class="col-md-8">
+                                            <label for="justificativaBelowPpt" class="form-label">Justificativa Below <span class="text-danger">*</span></label>
+                                            <InputTextArea id="justificativaBelowPpt" class="form-control" @bind-Value="model.JustificativaBelowPpt" rows="2" />
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+
+                        @if (model.TipoTabela == "DCT" && model.QueueType == "EXTRA")
+                        {
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="ddname" class="form-label">DDNAME<span class="text-danger">*</span></label>
+                                    <InputText id="ddname" class="form-control" @bind-Value="model.Ddname" @bind-Value:after="UpDdnameChanged" placeholder="Deve ser 'A,INTRDR' ou seguir o padrão BPDcss...S...G00000..." style="text-transform:uppercase;" />
+                                    @{
+                                        var mostrarErroDdname = !string.IsNullOrWhiteSpace(model.Ddname)
+                                            && !RegrasTabelas.ValidarDdnameExtra(model.Ddname, model.Css);
+                                    }
+                                    @if (mostrarErroDdname)
+                                    {
+                                        <small class="text-danger">
+                                            DDNAME deve ser 'A,INTRDR' ou seguir padrão 'BPD@(model.Css?.ToUpper())' + '.S' + '.G00000'.
+                                        </small>
+                                    }
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="dsname" class="form-label">DSNAME / SYSOUT<span class="text-danger">*</span></label>
+                                    <InputText id="dsname" class="form-control" @bind-Value="model.Dsname" @bind-Value:after="UpDsnameChanged" placeholder="Informe DSNAME ou SYSOUT" style="text-transform:uppercase;" />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="estFile" class="form-label">Estado do Arquivo<span class="text-danger">*</span></label>
+                                    <select id="estFile" class="form-select" @bind="model.EstFile">
+                                        <option value="">Selecione...</option>
+                                        <option value="INITIAL">INITIAL</option>
+                                        <option value="DEFERRED">DEFERRED</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3 d-flex flex-wrap gap-4 align-items-start">
+                                
+                                <div class="col-auto">
+                                    <label class="form-label d-block">Formato do Registro <span class="text-danger">*</span></label>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <div class="btn-group" role="group">
+                                            <input type="radio" class="btn-check" id="fixed" name="formReg" @bind="model.FormReg" />
+                                            <label class="btn btn-outline-primary" for="fixed">Fixed</label>
+
+                                            <input type="radio" class="btn-check" id="variable" name="formReg" @bind="model.FormReg" />
+                                            <label class="btn btn-outline-primary" for="variable">Variable</label>
+                                        </div>
+
+
+                                        <div class="btn-group" role="group">
+                                            <input type="radio" class="btn-check" id="block" name="formReg2"
+                                                value="BLOCK" @onchange="OnFormReg2Changed" />
+                                            <label class="btn btn-outline-primary" for="block">Block</label>
+
+                                            <input type="radio" class="btn-check" id="unblock" name="formReg2"
+                                                value="UNBLOCK" @onchange="OnFormReg2Changed" />
+                                            <label class="btn btn-outline-primary" for="unblock">Unblock</label>
+                                        </div>
+
+                                        <div class="btn-group" role="group">
+                                            <input type="radio" class="btn-check" id="asa" name="formReg3" @bind="model.FormReg3" />
+                                            <label class="btn btn-outline-primary" for="asa">Asa</label>
+
+                                            <input type="radio" class="btn-check" id="mac" name="formReg3" @bind="model.FormReg3" />
+                                            <label class="btn btn-outline-primary" for="mac">Mac</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            
+                                <div class="col-auto">
+                                    <label class="form-label d-block">Tipo do Arquivo <span class="text-danger">*</span></label>
+                                    <div class="btn-group" role="group">
+                                        <input type="radio" class="btn-check" id="output" name="fileType" @bind="model.FileType" />
+                                        <label class="btn btn-outline-primary" for="output">Output</label>
+
+                                        <input type="radio" class="btn-check" id="input" name="fileType" @bind="model.FileType" />
+                                        <label class="btn btn-outline-primary" for="input">Input</label>
+                                    </div>
+                                    <ValidationMessage For="@(() => model.FileType)" />
+                                </div>
+
+                                
+                                <div class="col-auto">
+                                    <label class="form-label d-block">Tamanho do Registro <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control" style="width:200px" @bind="model.RegSize" />
+                                    <ValidationMessage For="@(() => model.RegSize)" />
+                                    <small class="text-muted">Deve ser maior que 0.</small>
+                                </div>
+
+                                <div class="col-auto">
+                                    <label class="form-label d-block">Tamanho do Bloco <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control" style="width:150px" @bind="model.BlockSize" disabled="@IsUnblockSelected" />
+                                </div>
+                            </div>
+                        }
+                        else if (model.TipoTabela == "DCT" && model.QueueType == "INTRA")
+                        {
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="transacao" class="form-label">Transação <span class="text-danger">*</span></label>
+                                    <InputText id="transacao" class="form-control" @bind-Value="model.Transacao" @bind-Value:after="UpTransacaoChanged" placeholder="Informe a transação" style="text-transform:uppercase;" />
+                                    <ValidationMessage For="@(() => model.Transacao)" />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="trigLevel" class="form-label">TrigLevel <span class="text-danger">*</span></label>
+                                    <InputNumber id="trigLevel" class="form-control" @bind-Value="model.TrigLevel" min="1" />
+                                    <ValidationMessage For="@(() => model.TrigLevel)" />
+                                    @{
+                                        var mostrarErroTrigLevel = model.TrigLevel.HasValue && !RegrasTabelas.ValidarTrigLevel(model.TrigLevel);
+                                    }
+                                    @if (mostrarErroTrigLevel)
+                                    {
+                                        <small class="text-danger">TrigLevel deve ser maior que 0.</small>
+                                    }
+                                    else
+                                    {
+                                        <small class="text-muted">Deve ser maior que 0</small>
+                                    }
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label for="destino" class="form-label">Destino <span class="text-danger">*</span></label>
+                                    <select id="destino" class="form-select" @bind="model.Destino">
+                                        <option value="">Selecione...</option>
+                                        <option value="TERMINAL">TERMINAL</option>
+                                        <option value="FILE">FILE</option>
+                                    </select>
+                                    <ValidationMessage For="@(() => model.Destino)" />
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="terminal" class="form-label">Terminal <span class="text-danger">*</span></label>
+                                    <InputText id="terminal" class="form-control" @bind-Value="model.Terminal" @bind-Value:after="UpTerminalChanged" placeholder="Informe o terminal" style="text-transform:uppercase;" />
+                                    <ValidationMessage For="@(() => model.Terminal)" />
+                                    @{
+                                        var mostrarErroTerminal = !RegrasTabelas.ValidarTerminal(model.Terminal, model.Destino);
+                                    }
+                                    @if (mostrarErroTerminal)
+                                    {
+                                        <small class="text-danger">
+                                            @if (model.Destino == "TERMINAL" && string.IsNullOrWhiteSpace(model.Terminal))
+                                            {
+                                                <span>Terminal é obrigatório quando destino for TERMINAL.</span>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(model.Terminal) && model.Terminal.Length != 4)
+                                            {
+                                                <span>Terminal deve ter exatamente 4 caracteres.</span>
+                                            }
+                                        </small>
+                                    }
+                                    else if (model.Destino == "TERMINAL")
+                                    {
+                                        <small class="text-muted">Obrigatório quando destino for TERMINAL. Deve ter 4 caracteres.</small>
+                                    }
+                                </div>
+                            </div>
+
+                        }
+                        else if (model.TipoTabela == "DCT" && model.QueueType == "INDIRECT")
+                        {
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label for="formReg" class="form-label">Formato do Registro</label>
+                                    <select id="formReg" class="form-select" @bind="model.FormReg">
+                                        <option value="">Selecione...</option>
+                                        <option value="FIXED">FIXED</option>
+                                        <option value="VARIABLE">VARIABLE</option>
+                                    </select>
+                                </div>
+                            </div>
+                        }
+
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <hr />
+                                <div class="d-flex justify-content-between">
+                                    <a href="/" class="btn btn-outline-secondary">
+                                        <i class="bi bi-arrow-left"></i> Cancelar
+                                    </a>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-check-circle"></i> Criar Solicitação
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private NovaSolicitacaoCicsModel model = new();
+    private List<AmbienteCics> ambientes = new();
+    private List<AmbienteTodos> ambientesRemotos = new();
+    private string mensagemErro = "";
+    private string mensagemSucesso = "";
+    private bool showHelp = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarAmbientesAsync();
+        await CarregarAmbientesRemotosAsync();
+    }
+
+    private async Task CarregarAmbientesAsync()
+    {
+        try
+        {
+            var ambientesObtidos = await AmbienteCicsService.ObterAmbientesAtivosAsync();
+            ambientes = ambientesObtidos.ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao carregar ambientes: {ex.Message}");
+            ambientes = new List<AmbienteCics>();
+        }
+    }
+
+    private async Task CarregarAmbientesRemotosAsync()
+    {
+        try
+        {
+            var ambientesObtidos = await AmbienteTodosService.ObterAmbientesAtivosAsync();
+            ambientesRemotos = ambientesObtidos.ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao carregar ambientes remotos: {ex.Message}");
+            ambientesRemotos = new List<AmbienteTodos>();
+        }
+    }
+
+    private void OnAmbienteRemotoChanged()
+    {
+        if (model.AmbienteRemotoId.HasValue && model.AmbienteRemotoId > 0)
+        {
+            var ambienteSelecionado = ambientesRemotos.FirstOrDefault(a => a.Id == model.AmbienteRemotoId.Value);
+            model.AmbienteRemotoNome = ambienteSelecionado?.Nome ?? "";
+        }
+        else
+        {
+            model.AmbienteRemotoNome = "";
+        }
+    }
+
+    private async Task OnAmbienteChanged()
+    {
+        if (model.AmbienteId > 0)
+        {
+            var ambienteSelecionado = await AmbienteCicsService.ObterAmbientePorIdAsync(model.AmbienteId);
+            model.Appli = ambienteSelecionado?.IdChave ?? "";
+        }
+        else
+        {
+            model.Appli = "";
+        }
+    }
+
+    private void OnTipoTabelaChanged()
+    {
+        // Limpar campos específicos quando mudar o tipo
+        LimparCamposEspecificos();
+        
+        // Limpar mensagens de erro e sucesso
+        mensagemErro = "";
+        mensagemSucesso = "";
+    }
+
+    private void LimparCamposEspecificos()
+    {
+        // FCT
+        model.NameArq = null;
+        model.Type = null;
+        model.DsnameArq = null;
+        model.EstInit = null;
+        model.Services.Clear();
+        model.NumStrng = null;
+        
+        // FCT Remote
+        model.AmbienteRemotoId = null;
+        model.AmbienteRemotoNome = null;
+        
+        // FCT Padrão BNO
+        model.CodigoAgencia = null;
+        model.ArquivosPadraoBno.Clear();
+        
+        // DCT
+        model.FileName = null;
+        model.QueueType = null;
+        model.Ddname = null;
+        model.Dsname = null;
+        model.EstFile = null;
+        model.FormReg = null;
+        model.FormReg2 = null;
+        model.FormReg3 = null;
+        model.FileType = null;
+        model.RegSize = null;
+        model.BlockSize = null;
+        model.Transacao = null;
+        model.TrigLevel = null;
+        model.Destino = null;
+        model.Terminal = null;
+        
+        // PCT
+        model.NameTrans = null;
+        model.ActiveSoft = null;
+        model.TwaSize = "0";
+        model.Coment = null;
+        model.Prev = null;
+        model.DataAllocation = "ANY";
+        model.JustificativaBelow = null;
+        
+        // PPT
+        model.NameSoft = null;
+        model.LinkName = null;
+        model.Language = null;
+        model.TypePpt = null;
+        model.AutoAlt = null;
+        model.JustificativaAutoAlt = null;
+        model.JustificativaBelowPpt = null;
+    }
+
+    private void UpCssChanged()
+    {
+        if (!string.IsNullOrEmpty(model.Css))
+        {
+            model.Css = model.Css.ToUpperInvariant();
+            
+            // Auto-preencher campos baseados no CSS
+            if (model.TipoTabela == "DCT")
+            {
+                model.Ddname = $"BPD{model.Css}....S....G00000....";
+            }
+            if (model.TipoTabela == "FCT")
+            {
+                model.DsnameArq = $"BPD{model.Css}.D____.G00000";
+            }
+        }
+    }
+
+    private void OnServicoChanged(ChangeEventArgs e, string servico)
+    {
+        var marcado = e?.Value?.ToString() == "true";
+        if (marcado)
+        {
+            if (!model.Services.Contains(servico))
+                model.Services.Add(servico);
+        }
+        else
+        {
+            model.Services.Remove(servico);
+        }
+        
+        // Força re-renderização para atualizar validações
+        StateHasChanged();
+    }
+
+    // Métodos helper para cada serviço específico
+    private bool IsBrowseSelected
+    {
+        get => model.Services.Contains("BROWSE");
+        set
+        {
+            if (value && !model.Services.Contains("BROWSE"))
+                model.Services.Add("BROWSE");
+            else if (!value)
+                model.Services.Remove("BROWSE");
+            StateHasChanged();
+        }
+    }
+
+    private bool IsAddSelected
+    {
+        get => model.Services.Contains("ADD");
+        set
+        {
+            if (value && !model.Services.Contains("ADD"))
+                model.Services.Add("ADD");
+            else if (!value)
+                model.Services.Remove("ADD");
+            StateHasChanged();
+        }
+    }
+
+    private bool IsReadSelected
+    {
+        get => model.Services.Contains("READ");
+        set
+        {
+            if (value && !model.Services.Contains("READ"))
+                model.Services.Add("READ");
+            else if (!value)
+                model.Services.Remove("READ");
+            StateHasChanged();
+        }
+    }
+
+    private bool IsUpdateSelected
+    {
+        get => model.Services.Contains("UPDATE");
+        set
+        {
+            if (value && !model.Services.Contains("UPDATE"))
+                model.Services.Add("UPDATE");
+            else if (!value)
+                model.Services.Remove("UPDATE");
+            StateHasChanged();
+        }
+    }
+
+    private bool IsDeleteSelected
+    {
+        get => model.Services.Contains("DELETE");
+        set
+        {
+            if (value && !model.Services.Contains("DELETE"))
+                model.Services.Add("DELETE");
+            else if (!value)
+                model.Services.Remove("DELETE");
+            StateHasChanged();
+        }
+    }
+
+    private bool IsAmbienteTodosDisponivel()
+        => !string.IsNullOrEmpty(model.Css) &&
+           (model.Css.ToUpper() == "PXU" || model.Css.ToUpper() == "PXS");
+
+    private bool IsUnblockSelected => model.FormReg2?.ToUpperInvariant() == "UNBLOCK";
+
+    private void OnFormReg2Changed(ChangeEventArgs e)
+    {
+        model.FormReg2 = e.Value?.ToString();
+        if (model.FormReg2?.ToUpperInvariant() == "UNBLOCK")
+            model.BlockSize = "0";
+    }
+
+    private async Task SubmitForm()
+    {
+        try
+        {
+            // Validação básica
+            if (string.IsNullOrWhiteSpace(model.Css) ||
+                model.AmbienteId <= 0 ||
+                string.IsNullOrWhiteSpace(model.Usuario) ||
+                string.IsNullOrWhiteSpace(model.TipoTabela))
+            {
+                mensagemErro = "Preencha os campos obrigatórios da solicitação.";
+                return;
+            }
+
+            // Validações específicas por tipo de tabela
+            if (model.TipoTabela == "DCT" && model.QueueType == "INTRA")
+            {
+                if (!RegrasTabelas.ValidarFilaIntra(model.Transacao, model.TrigLevel, model.Destino, model.Terminal))
+                {
+                    mensagemErro = "Dados inválidos para fila INTRA.";
+                    return;
+                }
+            }
+
+            // Criar entidade SolicitacaoCics2025
+            var solicitacao = new SolicitacaoCics2025
+            {
+                // Campos básicos
+                AmbienteId = model.AmbienteId,
+                Appli = model.Appli,
+                Usuario = model.Usuario,
+                Css = model.Css,
+                TipoTabela = model.TipoTabela,
+                Status = "Pendente",
+                DataSolicitacao = DateTime.Now,
+                Operacao = model.Operacao,
+
+                // FCT
+                NameArq = model.TipoTabela == "FCT" ? model.NameArq : null,
+                Type = model.TipoTabela == "FCT" ? model.Type : null,
+                DsnameArq = model.TipoTabela == "FCT" ? model.DsnameArq : null,
+                EstInit = (model.TipoTabela == "FCT" || model.TipoTabela == "PCT" || model.TipoTabela == "PPT") ? model.EstInit : null,
+                Service = model.TipoTabela == "FCT" ? string.Join(",", model.Services) : null,
+                NumStrng = model.TipoTabela == "FCT" ? model.NumStrng : null,
+
+                // DCT
+                FileName = model.TipoTabela == "DCT" ? model.FileName : null,
+                QueueType = model.TipoTabela == "DCT" ? model.QueueType : null,
+                Ddname = model.TipoTabela == "DCT" ? model.Ddname : null,
+                Dsname = model.TipoTabela == "DCT" ? model.Dsname : null,
+                EstFile = model.TipoTabela == "DCT" ? model.EstFile : null,
+                FormReg = model.TipoTabela == "DCT" ? model.FormReg : null,
+                FormReg2 = model.TipoTabela == "DCT" ? model.FormReg2 : null,
+                FormReg3 = model.TipoTabela == "DCT" ? model.FormReg3 : null,
+                FileType = model.TipoTabela == "DCT" ? model.FileType : null,
+                RegSize = model.TipoTabela == "DCT" ? model.RegSize : null,
+                BlockSize = model.TipoTabela == "DCT" ? model.BlockSize : null,
+                Transacao = (model.TipoTabela == "DCT" && model.QueueType == "INTRA") ? model.Transacao : null,
+                TrigLevel = (model.TipoTabela == "DCT" && model.QueueType == "INTRA") ? model.TrigLevel : null,
+                Destino = (model.TipoTabela == "DCT" && model.QueueType == "INTRA") ? model.Destino : null,
+                Terminal = (model.TipoTabela == "DCT" && model.QueueType == "INTRA") ? model.Terminal : null,
+
+                // PCT
+                NameTrans = model.TipoTabela == "PCT" ? model.NameTrans : null,
+                ActiveSoft = model.TipoTabela == "PCT" ? model.ActiveSoft : null,
+                TwaSize = model.TipoTabela == "PCT" ? model.TwaSize : null,
+                Coment = model.TipoTabela == "PCT" ? model.Coment : null,
+                Prev = model.TipoTabela == "PCT" ? model.Prev : null,
+                DataAllocation = model.TipoTabela == "PCT" ? model.DataAllocation : null,
+                JustificativaBelow = (model.TipoTabela == "PCT" && model.DataAllocation == "BELOW") ? model.JustificativaBelow : null,
+
+                // PPT
+                NameSoft = model.TipoTabela == "PPT" ? model.NameSoft : null,
+                LinkName = model.TipoTabela == "PPT" ? model.LinkName : null,
+                Language = model.TipoTabela == "PPT" ? model.Language : null,
+                TypePpt = model.TipoTabela == "PPT" ? model.TypePpt : null,
+                AutoAlt = model.TipoTabela == "PPT" ? model.AutoAlt : null,
+                JustificativaAutoAlt = (model.TipoTabela == "PPT" && model.AutoAlt == "SIM") ? model.JustificativaAutoAlt : null,
+                JustificativaBelowPpt = (model.TipoTabela == "PPT" && model.DataAllocation == "BELOW") ? model.JustificativaBelowPpt : null,
+
+                // Observações
+                ObservacoesAdmin = model.ObservacoesAdmin
+            };
+
+            var solicitacaoSalva = await SolicitacoesCics2025Service.SalvarSolicitacaoAsync(solicitacao);
+            
+            mensagemSucesso = $"✅ Solicitação {solicitacaoSalva.NumeroSolicitacao} criada com sucesso no SQLite!";
+            mensagemErro = "";
+            StateHasChanged();
+            await Task.Delay(2000);
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            mensagemErro = $"❌ Erro ao salvar solicitação no SQLite: {ex.Message}";
+            mensagemSucesso = "";
+        }
+    }
+
+    private void OnInvalidSubmit()
+    {
+        mensagemErro = "Por favor, preencha todos os campos obrigatórios!";
+        mensagemSucesso = "";
+        StateHasChanged();
+    }
+
+    void ToggleHelp() => showHelp = !showHelp;
+
+    // Métodos para conversão automática para maiúsculas
+    private void UpNameArqChanged()
+    {
+        if (!string.IsNullOrEmpty(model.NameArq))
+            model.NameArq = model.NameArq.ToUpperInvariant();
+    }
+
+    private void UpDsnameArqChanged()
+    {
+        if (!string.IsNullOrEmpty(model.DsnameArq))
+            model.DsnameArq = model.DsnameArq.ToUpperInvariant();
+    }
+
+    private void UpNameTransChanged()
+    {
+        if (!string.IsNullOrEmpty(model.NameTrans))
+            model.NameTrans = model.NameTrans.ToUpperInvariant();
+    }
+
+    private void UpActiveSoftChanged()
+    {
+        if (!string.IsNullOrEmpty(model.ActiveSoft))
+            model.ActiveSoft = model.ActiveSoft.ToUpperInvariant();
+    }
+
+    private void UpNameSoftChanged()
+    {
+        if (!string.IsNullOrEmpty(model.NameSoft))
+            model.NameSoft = model.NameSoft.ToUpperInvariant();
+    }
+
+    private void UpLinkNameChanged()
+    {
+        if (!string.IsNullOrEmpty(model.LinkName))
+            model.LinkName = model.LinkName.ToUpperInvariant();
+    }
+
+    private void OnTypePptChanged()
+    {
+        // Limpa os campos específicos de PROGRAMA quando outro tipo é selecionado
+        if (model.TypePpt != "PROGRAMA")
+        {
+            model.AutoAlt = null;
+            model.JustificativaAutoAlt = null;
+            model.DataAllocation = "ANY"; // Valor padrão
+            model.JustificativaBelowPpt = null;
+        }
+    }
+
+    private void UpFileNameChanged()
+    {
+        if (!string.IsNullOrEmpty(model.FileName))
+            model.FileName = model.FileName.ToUpperInvariant();
+    }
+
+    private void UpDdnameChanged()
+    {
+        if (!string.IsNullOrEmpty(model.Ddname))
+            model.Ddname = model.Ddname.ToUpperInvariant();
+    }
+
+    private void UpDsnameChanged()
+    {
+        if (!string.IsNullOrEmpty(model.Dsname))
+            model.Dsname = model.Dsname.ToUpperInvariant();
+    }
+
+    private void UpTransacaoChanged()
+    {
+        if (!string.IsNullOrEmpty(model.Transacao))
+            model.Transacao = model.Transacao.ToUpperInvariant();
+    }
+
+    private void UpTerminalChanged()
+    {
+        if (!string.IsNullOrEmpty(model.Terminal))
+            model.Terminal = model.Terminal.ToUpperInvariant();
+    }
+
+    // =====================================================================
+    // 🏦 MÉTODOS ESPECÍFICOS PADRÃO BNO
+    // =====================================================================
+
+    private void OnCodigoAgenciaChanged()
+    {
+        if (!string.IsNullOrEmpty(model.CodigoAgencia))
+        {
+            // Remove caracteres não numéricos
+            model.CodigoAgencia = new string(model.CodigoAgencia.Where(char.IsDigit).ToArray());
+            
+            // Preenche com zeros à esquerda até 4 dígitos
+            if (model.CodigoAgencia.Length <= 4)
+            {
+                model.CodigoAgencia = model.CodigoAgencia.PadLeft(4, '0');
+            }
+            else
+            {
+                model.CodigoAgencia = model.CodigoAgencia.Substring(0, 4);
+            }
+        }
+        
+        // Atualiza campos automáticos
+        AtualizarCamposAutomaticosBno();
+    }
+
+    private void AtualizarCamposAutomaticosBno()
+    {
+        if (model.Type == "PADRÃO BNO")
+        {
+            // Atualiza serviços baseados na seleção de arquivos
+            model.Services.Clear();
+            model.Services.AddRange(ObterServicosAutomaticosBno());
+            
+            // Atualiza campos automáticos
+            model.NumStrng = "03";
+            model.EstInit = "ENABLE";
+            model.NameArq = GerarNomeArquivoBno();
+            model.DsnameArq = GerarDsnameBno();
+        }
+    }
+
+    private string GerarNomeArquivoBno()
+    {
+        if (string.IsNullOrWhiteSpace(model.CodigoAgencia) || model.ArquivosPadraoBno.Count == 0)
+            return "";
+
+        var tipos = string.Join("", model.ArquivosPadraoBno.OrderBy(x => x));
+        return $"BNO{tipos}{model.CodigoAgencia}";
+    }
+
+    private string GerarDsnameBno()
+    {
+        if (string.IsNullOrWhiteSpace(model.CodigoAgencia) || model.ArquivosPadraoBno.Count == 0)
+            return "";
+
+        var primeiroTipo = model.ArquivosPadraoBno.OrderBy(x => x).First();
+        return $"BPDBNOA.D{primeiroTipo}I001.G00000.AGE{model.CodigoAgencia}";
+    }
+
+    private List<string> ObterServicosAutomaticosBno()
+    {
+        var servicos = new HashSet<string>();
+
+        foreach (var arquivo in model.ArquivosPadraoBno)
+        {
+            switch (arquivo)
+            {
+                case "I": // Índice
+                    servicos.Add("BROWSE");
+                    servicos.Add("READ");
+                    servicos.Add("UPDATE");
+                    break;
+                case "O": // Outros - todos os serviços
+                    servicos.Add("ADD");
+                    servicos.Add("BROWSE");
+                    servicos.Add("DELETE");
+                    servicos.Add("READ");
+                    servicos.Add("UPDATE");
+                    break;
+                case "S": // Sustados
+                case "P": // Pacote
+                    servicos.Add("ADD");
+                    servicos.Add("BROWSE");
+                    servicos.Add("READ");
+                    servicos.Add("UPDATE");
+                    break;
+                case "X": // Índice Alternado do Pacote
+                    servicos.Add("BROWSE");
+                    servicos.Add("READ");
+                    break;
+            }
+        }
+
+        return servicos.OrderBy(s => s).ToList();
+    }
+
+    // Propriedades helper para cada arquivo BNO
+    private bool IsArquivoISelected
+    {
+        get => model.ArquivosPadraoBno.Contains("I");
+        set
+        {
+            if (value && !model.ArquivosPadraoBno.Contains("I"))
+                model.ArquivosPadraoBno.Add("I");
+            else if (!value)
+                model.ArquivosPadraoBno.Remove("I");
+            AtualizarCamposAutomaticosBno();
+            StateHasChanged();
+        }
+    }
+
+    private bool IsArquivoOSelected
+    {
+        get => model.ArquivosPadraoBno.Contains("O");
+        set
+        {
+            if (value && !model.ArquivosPadraoBno.Contains("O"))
+                model.ArquivosPadraoBno.Add("O");
+            else if (!value)
+                model.ArquivosPadraoBno.Remove("O");
+            AtualizarCamposAutomaticosBno();
+            StateHasChanged();
+        }
+    }
+
+    private bool IsArquivoSSelected
+    {
+        get => model.ArquivosPadraoBno.Contains("S");
+        set
+        {
+            if (value && !model.ArquivosPadraoBno.Contains("S"))
+                model.ArquivosPadraoBno.Add("S");
+            else if (!value)
+                model.ArquivosPadraoBno.Remove("S");
+            AtualizarCamposAutomaticosBno();
+            StateHasChanged();
+        }
+    }
+
+    private bool IsArquivoPSelected
+    {
+        get => model.ArquivosPadraoBno.Contains("P");
+        set
+        {
+            if (value && !model.ArquivosPadraoBno.Contains("P"))
+                model.ArquivosPadraoBno.Add("P");
+            else if (!value)
+                model.ArquivosPadraoBno.Remove("P");
+            AtualizarCamposAutomaticosBno();
+            StateHasChanged();
+        }
+    }
+
+    private bool IsArquivoXSelected
+    {
+        get => model.ArquivosPadraoBno.Contains("X");
+        set
+        {
+            if (value && !model.ArquivosPadraoBno.Contains("X"))
+                model.ArquivosPadraoBno.Add("X");
+            else if (!value)
+                model.ArquivosPadraoBno.Remove("X");
+            AtualizarCamposAutomaticosBno();
+            StateHasChanged();
+        }
+    }
+}

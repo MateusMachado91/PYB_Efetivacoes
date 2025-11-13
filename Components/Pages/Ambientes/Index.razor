@@ -1,0 +1,376 @@
+@page "/ambientes"
+@rendermode InteractiveServer
+@using PYBWeb.Domain.Entities
+@using PYBWeb.Domain.Interfaces
+@inject IAmbienteCicsService AmbienteCicsService
+@inject NavigationManager Navigation
+
+@using Microsoft.AspNetCore.Authorization
+
+@attribute [Authorize(Policy = "RequireGroup")]
+
+<PageTitle>Ambientes - PYB CICS</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="display-6 text-primary">
+                <i class="bi bi-server"></i> Ambientes CICS
+            </h1>
+        </div>
+        <div class="col-md-4 text-end">
+            <button class="btn btn-primary" @onclick="CarregarAmbientes">
+                <i class="bi bi-arrow-clockwise"></i> Atualizar
+            </button>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <label for="filtroNome" class="form-label">Buscar por Nome:</label>
+            <input id="filtroNome" type="text" class="form-control" placeholder="Digite o nome do ambiente..." @bind="filtroNome" @onkeyup="AplicarFiltros" />
+        </div>
+        <div class="col-md-3">
+            <label for="filtroMaquina" class="form-label">Máquina:</label>
+            <input id="filtroMaquina" type="text" class="form-control" placeholder="Digite a máquina..." @bind="filtroMaquina" @onkeyup="AplicarFiltros" />
+        </div>
+
+        <div class="col-md-2 d-flex align-items-end">
+            <button class="btn btn-secondary w-100" @onclick="LimparFiltros">
+                <i class="bi bi-x-circle"></i> Limpar
+            </button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+        </div>
+    }
+    else 
+    {
+        @if (ambientesFiltrados?.Any() != true)
+        {
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle"></i> Nenhum ambiente encontrado com os filtros aplicados.
+                <br><small>Total de ambientes sem filtro: @todosAmbientes.Count()</small>
+            </div>
+        }
+        else
+        {
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Nome</th>
+                        <th>Descrição</th>
+                        <th>Ambiente</th>
+                        <th>Máquina</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var ambiente in ambientesFiltrados)
+                    {
+                        <tr class="@GetRowClass(ambiente)" style="cursor: pointer;" @onclick="() => SelecionarAmbiente(ambiente)">
+                            <td>
+                                <strong>@ambiente.Nome</strong>
+                                @if (!string.IsNullOrEmpty(ambiente.Sufixo))
+                                {
+                                    <small class="text-muted d-block">Sufixo: @ambiente.Sufixo</small>
+                                }
+                            </td>
+                            <td>@ambiente.Descricao</td>
+                            <td>
+                                <span class="badge bg-info">@ambiente.Ambiente</span>
+                            </td>
+                            <td>@ambiente.Maquina</td>
+                            <td>
+                                <span class="badge @GetStatusBadgeClass(ambiente.Ativo)">
+                                    @(ambiente.Ativo ? "Ativo" : "Inativo")
+                                </span>
+                            </td>
+                        </tr>
+                        
+                  
+                        @if (ambienteSelecionado?.Id == ambiente.Id)
+                        {
+                            <tr class="table-info">
+                                <td colspan="7">
+                                    <div class="card border-0">
+                                        <div class="card-body">
+                                            <h6 class="card-title">
+                                                <i class="bi bi-info-circle"></i> Detalhes do Ambiente @ambiente.Nome
+                                            </h6>
+                                            
+                                          
+                                            <div class="row mb-3">
+
+                                                <div class="col-md-1">
+                                                    <strong>Status:</strong><br>
+                                                    <span class="badge @GetStatusBadgeClass(ambiente.Ativo)">
+                                                        @(ambiente.Ativo ? "Ativo" : "Inativo")
+                                                    </span>
+                                                </div>
+
+                                                <div class="col-md-1">
+                                                    <strong>ID Chave:</strong><br>
+                                                    @ambiente.IdChave
+                                                </div>
+                                                <div class="col-md-1">
+                                                    <strong>ISC:</strong><br>
+                                                    @ambiente.Isc
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <strong>Steplib CSD:</strong><br>
+                                                    @ambiente.SteplibCsd
+                                                </div>
+                                               
+                                                @if (!string.IsNullOrEmpty(ambiente.DsnameDfhcsd))
+                                                {
+                                                    
+                                                        <div class="col-md-4">
+                                                            <strong>DSName DFHCSD:</strong><br>
+                                                            <code>@ambiente.DsnameDfhcsd</code>
+                                                        </div>
+                                                    
+                                                }
+                                                </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+
+        @if (ambienteSelecionado != null)
+        {
+            <div class="card mt-3">
+                <div class="card-header bg-primary text-white">
+                    <h6 class="mb-0">
+                        <i class="bi bi-gear"></i> Ações para @ambienteSelecionado.Nome
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button class="btn btn-primary" @onclick="() => EditarAmbiente(ambienteSelecionado.Id)">
+                            <i class="bi bi-pencil"></i> Editar
+                        </button>
+                        <button class="btn btn-info" @onclick="() => TestarConexao(ambienteSelecionado)">
+                            <i class="bi bi-wifi"></i> Testar Conexão
+                        </button>
+                        @if (ambienteSelecionado.Ativo)
+                        {
+                            <button class="btn btn-warning" @onclick="() => DesativarAmbiente(ambienteSelecionado.Id)">
+                                <i class="bi bi-pause-circle"></i> Desativar
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-success" @onclick="() => AtivarAmbiente(ambienteSelecionado.Id)">
+                                <i class="bi bi-play-circle"></i> Ativar
+                            </button>
+                        }
+                        <button class="btn btn-secondary" @onclick="LimparSelecao">
+                            <i class="bi bi-x-circle"></i> Cancelar Seleção
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+
+        <div class="row mt-3">
+            <div class="col-12">
+                <small class="text-muted">
+                    Mostrando @ambientesFiltrados.Count() de @todosAmbientes.Count() ambientes
+                </small>
+            </div>
+        </div>
+        } 
+    } 
+</div>
+
+@code {
+    private bool isLoading = true;
+    private IEnumerable<AmbienteCics> todosAmbientes = new List<AmbienteCics>();
+    private IEnumerable<AmbienteCics> ambientesFiltrados = new List<AmbienteCics>();
+    private AmbienteCics? ambienteSelecionado = null;
+
+    private string filtroNome = "";
+    private string filtroMaquina = "";
+    private string filtroServidor = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarAmbientes();
+    }
+
+    private async Task CarregarAmbientes()
+    {
+        isLoading = true;
+        try
+        {
+            todosAmbientes = await AmbienteCicsService.ObterAmbientesAtivosAsync();
+            AplicarFiltros();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao carregar ambientes: {ex.Message}");
+            todosAmbientes = new List<AmbienteCics>();
+            ambientesFiltrados = new List<AmbienteCics>();
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelecionarAmbiente(AmbienteCics ambiente)
+    {
+        if (ambienteSelecionado?.Id == ambiente.Id)
+        {
+            // Se clicar no mesmo ambiente, desmarca (toggle)
+            ambienteSelecionado = null;
+        }
+        else
+        {
+            // Seleciona o novo ambiente
+            ambienteSelecionado = ambiente;
+        }
+        StateHasChanged();
+    }
+
+    private void LimparSelecao()
+    {
+        ambienteSelecionado = null;
+        StateHasChanged();
+    }
+
+    private void AplicarFiltros()
+    {
+        ambientesFiltrados = todosAmbientes;
+
+        // Filtro por nome
+        if (!string.IsNullOrEmpty(filtroNome))
+        {
+            var nomeUpper = filtroNome.ToUpper();
+            ambientesFiltrados = ambientesFiltrados.Where(a =>
+                a.Nome.ToUpper().Contains(nomeUpper) ||
+                a.Descricao.ToUpper().Contains(nomeUpper)
+            );
+        }
+
+        // Filtro por máquina
+        if (!string.IsNullOrEmpty(filtroMaquina))
+        {
+            var maquinaUpper = filtroMaquina.ToUpper();
+            ambientesFiltrados = ambientesFiltrados.Where(a =>
+                a.Maquina.ToUpper().Contains(maquinaUpper)
+            );
+        }
+
+        // Filtro por servidor
+        if (!string.IsNullOrEmpty(filtroServidor))
+        {
+            var servidorUpper = filtroServidor.ToUpper();
+            ambientesFiltrados = ambientesFiltrados.Where(a =>
+                a.Servidor.ToUpper().Contains(servidorUpper)
+            );
+        }
+
+        ambientesFiltrados = ambientesFiltrados.OrderBy(a => a.Nome);
+        
+        // Se o ambiente selecionado não está mais na lista filtrada, limpa a seleção
+        if (ambienteSelecionado != null && !ambientesFiltrados.Any(a => a.Id == ambienteSelecionado.Id))
+        {
+            ambienteSelecionado = null;
+        }
+        
+        StateHasChanged();
+    }
+
+    private void LimparFiltros()
+    {
+        filtroNome = "";
+        filtroMaquina = "";
+        filtroServidor = "";
+        AplicarFiltros();
+    }
+
+    private void EditarAmbiente(int id)
+    {
+        Navigation.NavigateTo($"/ambientes/{id}/editar");
+    }
+
+    private async Task TestarConexao(AmbienteCics ambiente)
+    {
+        Console.WriteLine($"Testando conexão com {ambiente.Nome} em {ambiente.Servidor}:{ambiente.Porta}");
+
+        using var httpClient = new HttpClient();
+        try
+        {
+            var response = await httpClient.GetAsync($"http://{ambiente.Servidor}:{ambiente.Porta}/status");
+            if (response.IsSuccessStatusCode)
+            {
+                Console.WriteLine("Conexão bem-sucedida.");
+            }
+            else
+            {
+                Console.WriteLine("Falha na conexão.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao testar conexão: {ex.Message}");
+        }
+    }
+
+    private async Task AtivarAmbiente(int id)
+    {
+        // TODO: Implementar ativação
+        Console.WriteLine($"Ativando ambiente {id}");
+        await CarregarAmbientes();
+    }
+
+    private async Task DesativarAmbiente(int id)
+    {
+        // TODO: Implementar desativação  
+        Console.WriteLine($"Desativando ambiente {id}");
+        await CarregarAmbientes();
+    }
+
+    private string GetRowClass(AmbienteCics ambiente)
+    {
+        var classes = new List<string>();
+        
+        // Adiciona classe para linha selecionada
+        if (ambienteSelecionado?.Id == ambiente.Id)
+        {
+            classes.Add("table-primary");
+        }
+        
+        // Adiciona classe para ambiente inativo
+        if (!ambiente.Ativo)
+        {
+            classes.Add("table-secondary");
+        }
+        
+        return string.Join(" ", classes);
+    }
+
+    private string GetStatusBadgeClass(bool ativo)
+    {
+        return ativo ? "bg-success" : "bg-secondary";
+    }
+}
